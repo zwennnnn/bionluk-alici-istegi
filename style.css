@@ -1,0 +1,143 @@
+/* Eklenti stilleri buraya eklenecek */ 
+
+body {
+    font-family: sans-serif;
+    width: 350px;
+    padding: 10px;
+    background-color: #f9f9f9;
+}
+
+.header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 15px;
+}
+
+h1 {
+    margin: 0;
+    font-size: 1.2em;
+    color: #333;
+}
+
+h2 {
+    font-size: 1em;
+    color: #555;
+    margin-top: 20px;
+    margin-bottom: 8px;
+    border-bottom: 1px solid #eee;
+    padding-bottom: 4px;
+}
+
+ul {
+    list-style-type: none;
+    padding: 0;
+    margin: 0;
+    max-height: 150px; /* Kaydırma çubuğu için maksimum yükseklik */
+    overflow-y: auto; /* Dikey kaydırma */
+    border: 1px solid #ddd;
+    background-color: #fff;
+    border-radius: 4px;
+}
+
+li {
+    padding: 8px 10px;
+    border-bottom: 1px solid #eee;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+li:last-child {
+    border-bottom: none;
+}
+
+li span {
+    cursor: pointer;
+    color: #007bff;
+    text-decoration: none;
+    flex-grow: 1;
+    margin-right: 10px;
+}
+
+li span:hover {
+    text-decoration: underline;
+}
+
+button {
+    background-color: #007bff;
+    color: white;
+    border: none;
+    padding: 5px 8px;
+    text-align: center;
+    text-decoration: none;
+    display: inline-block;
+    font-size: 0.8em;
+    border-radius: 4px;
+    cursor: pointer;
+    margin-left: 5px;
+}
+
+button:hover {
+    background-color: #0056b3;
+}
+
+/* Toggle Switch stilleri */
+.switch {
+    position: relative;
+    display: inline-block;
+    width: 40px; /* Daha küçük */
+    height: 20px; /* Daha küçük */
+}
+
+.switch input { 
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: #ccc;
+    -webkit-transition: .4s;
+    transition: .4s;
+}
+
+.slider:before {
+    position: absolute;
+    content: "";
+    height: 14px; /* Daha küçük */
+    width: 14px;  /* Daha küçük */
+    left: 3px;    /* Daha küçük */
+    bottom: 3px;  /* Daha küçük */
+    background-color: white;
+    -webkit-transition: .4s;
+    transition: .4s;
+}
+
+input:checked + .slider {
+    background-color: #2196F3;
+}
+
+input:focus + .slider {
+    box-shadow: 0 0 1px #2196F3;
+}
+
+input:checked + .slider:before {
+    -webkit-transform: translateX(18px); /* Daha küçük */
+    -ms-transform: translateX(18px);     /* Daha küçük */
+    transform: translateX(18px);         /* Daha küçük */
+}
+
+.slider.round {
+    border-radius: 20px; /* Daha küçük */
+}
+
+.slider.round:before {
+    border-radius: 50%;
+} 
