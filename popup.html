@@ -1,28 +1,134 @@
 <!DOCTYPE html>
-<html>
+<html lang="tr">
 <head>
-    <title>Bionluk Bildirici</title>
     <meta charset="UTF-8">
-    <link rel="stylesheet" type="text/css" href="style.css">
+    <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <div class="header">
-        <h1>Bionluk Bildirici</h1>
-        <label class="switch">
-            <input type="checkbox" id="extensionToggle">
-            <span class="slider round"></span>
-        </label>
+    <div class="app">
+        <!-- Header -->
+        <div class="header">
+            <div class="header-left">
+                <div class="logo">B</div>
+                <div>
+                    <h1>Bionluk Bildirici</h1>
+                    <span class="version">v2.0</span>
+                </div>
+            </div>
+            <div class="header-right">
+                <button class="icon-btn" id="settingsBtn" title="Ayarlar">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+                </button>
+                <label class="switch">
+                    <input type="checkbox" id="extensionToggle">
+                    <span class="slider"></span>
+                </label>
+            </div>
+        </div>
+
+        <!-- Stats Bar -->
+        <div class="stats-bar">
+            <div class="stat">
+                <span class="stat-value" id="statNew">0</span>
+                <span class="stat-label">Yeni</span>
+            </div>
+            <div class="stat-divider"></div>
+            <div class="stat">
+                <span class="stat-value" id="statArchived">0</span>
+                <span class="stat-label">Arsiv</span>
+            </div>
+            <div class="stat-divider"></div>
+            <div class="stat">
+                <span class="stat-value" id="statIgnored">0</span>
+                <span class="stat-label">Yok Sayilan</span>
+            </div>
+            <div class="stat-divider"></div>
+            <div class="stat">
+                <span class="stat-value" id="statTotal">0</span>
+                <span class="stat-label">Toplam</span>
+            </div>
+        </div>
+
+        <!-- Search -->
+        <div class="search-box">
+            <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+            <input type="text" id="searchInput" placeholder="Istek ara...">
+        </div>
+
+        <!-- Tabs -->
+        <div class="tabs">
+            <button class="tab active" data-tab="notified">
+                Yeni
+                <span class="tab-badge" id="badgeNew">0</span>
+            </button>
+            <button class="tab" data-tab="archived">Arsiv</button>
+            <button class="tab" data-tab="ignored">Yok Sayilan</button>
+        </div>
+
+        <!-- Request Lists -->
+        <div class="tab-content active" id="tab-notified">
+            <ul id="notifiedRequestsList" class="request-list"></ul>
+        </div>
+        <div class="tab-content" id="tab-archived">
+            <ul id="archivedRequestsList" class="request-list"></ul>
+        </div>
+        <div class="tab-content" id="tab-ignored">
+            <ul id="ignoredRequestsList" class="request-list"></ul>
+        </div>
+
+        <!-- Settings Panel -->
+        <div class="settings-panel" id="settingsPanel">
+            <div class="settings-header">
+                <h2>Ayarlar</h2>
+                <button class="icon-btn" id="closeSettings">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+                </button>
+            </div>
+            <div class="settings-body">
+                <div class="setting-group">
+                    <label>Kontrol Araligi (dakika)</label>
+                    <div class="range-wrapper">
+                        <input type="range" id="checkInterval" min="1" max="10" value="1">
+                        <span id="intervalValue">1 dk</span>
+                    </div>
+                </div>
+                <div class="setting-group">
+                    <label>Bildirim Sesi</label>
+                    <label class="switch small">
+                        <input type="checkbox" id="soundToggle" checked>
+                        <span class="slider"></span>
+                    </label>
+                </div>
+                <div class="setting-group">
+                    <label>Anahtar Kelime Filtresi</label>
+                    <p class="setting-hint">Virgülle ayir. Sadece bu kelimeleri iceren istekler icin bildirim alirsin.</p>
+                    <input type="text" id="keywordFilter" class="text-input" placeholder="react, flutter, python...">
+                </div>
+                <div class="setting-group">
+                    <label>Min. Butce (TL)</label>
+                    <input type="number" id="minBudget" class="text-input" placeholder="0" min="0">
+                </div>
+                <div class="setting-group">
+                    <label>Telegram Bot Token</label>
+                    <p class="setting-hint">Sadece kendi bilgisayarinda saklanir. Kimseyle paylasma.</p>
+                    <input type="text" id="tgBotToken" class="text-input" placeholder="123456789:ABCDEF...">
+                </div>
+                <div class="setting-group">
+                    <label>Telegram Chat ID</label>
+                    <p class="setting-hint">Botuna bir kez mesaj atip chat id'ni al.</p>
+                    <input type="text" id="tgChatId" class="text-input" placeholder="123456789">
+                </div>
+                <button class="btn-primary" id="saveSettings">Kaydet</button>
+                <button class="btn-danger" id="clearAllData">Tum Verileri Temizle</button>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="footer">
+            <span>Son kontrol: <span id="lastCheckTime">--</span></span>
+            <button class="btn-sm" id="checkNowBtn">Simdi Kontrol Et</button>
+        </div>
     </div>
-
-    <h2>Son Bildirimler</h2>
-    <ul id="notifiedRequestsList"></ul>
-
-    <h2>Arşivlenmiş İstekler</h2>
-    <ul id="archivedRequestsList"></ul>
-    
-    <h2>Yok Sayılan İstekler</h2>
-    <ul id="ignoredRequestsList"></ul>
-
     <script src="popup.js"></script>
 </body>
-</html> 
+</html>

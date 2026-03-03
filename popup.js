@@ -1,112 +1,327 @@
-document.addEventListener('DOMContentLoaded', function() {
-    const extensionToggle = document.getElementById('extensionToggle');
-    const notifiedRequestsList = document.getElementById('notifiedRequestsList');
-    const archivedRequestsList = document.getElementById('archivedRequestsList');
-    const ignoredRequestsList = document.getElementById('ignoredRequestsList');
+document.addEventListener('DOMContentLoaded', () => {
+    const $ = (sel) => document.querySelector(sel);
+    const $$ = (sel) => document.querySelectorAll(sel);
 
-    // Eklenti durumunu yükle ve ayarla
-    chrome.storage.local.get("isExtensionActive", (data) => {
+    const extensionToggle = $('#extensionToggle');
+    const searchInput = $('#searchInput');
+    const settingsBtn = $('#settingsBtn');
+    const closeSettings = $('#closeSettings');
+    const settingsPanel = $('#settingsPanel');
+    const checkNowBtn = $('#checkNowBtn');
+    const saveSettingsBtn = $('#saveSettings');
+    const clearAllDataBtn = $('#clearAllData');
+    const checkIntervalInput = $('#checkInterval');
+    const intervalValueSpan = $('#intervalValue');
+    const soundToggle = $('#soundToggle');
+    const keywordFilter = $('#keywordFilter');
+    const minBudget = $('#minBudget');
+    const tgBotTokenInput = $('#tgBotToken');
+    const tgChatIdInput = $('#tgChatId');
+
+    // Tab switching
+    $$('.tab').forEach(tab => {
+        tab.addEventListener('click', () => {
+            $$('.tab').forEach(t => t.classList.remove('active'));
+            $$('.tab-content').forEach(tc => tc.classList.remove('active'));
+            tab.classList.add('active');
+            $(`#tab-${tab.dataset.tab}`).classList.add('active');
+        });
+    });
+
+    // Extension toggle
+    chrome.storage.local.get(['isExtensionActive'], (data) => {
         extensionToggle.checked = data.isExtensionActive !== undefined ? data.isExtensionActive : true;
     });
 
-    // Eklenti durumunu değiştirme
     extensionToggle.addEventListener('change', () => {
         chrome.storage.local.set({ isExtensionActive: extensionToggle.checked });
-    
-        console.log("Eklenti durumu değişti:", extensionToggle.checked);
+        showToast(extensionToggle.checked ? 'Eklenti aktif' : 'Eklenti pasif');
     });
 
-    // İstek listelerini yükle ve göster
+    // Settings panel
+    settingsBtn.addEventListener('click', () => {
+        settingsPanel.classList.add('open');
+        loadSettings();
+    });
+
+    closeSettings.addEventListener('click', () => {
+        settingsPanel.classList.remove('open');
+    });
+
+    // Load settings values
+    function loadSettings() {
+        chrome.storage.local.get(['checkInterval', 'soundEnabled', 'keywords', 'minBudgetFilter', 'tgBotToken', 'tgChatId'], (data) => {
+            checkIntervalInput.value = data.checkInterval || 1;
+            intervalValueSpan.textContent = `${data.checkInterval || 1} dk`;
+            soundToggle.checked = data.soundEnabled !== undefined ? data.soundEnabled : true;
+            keywordFilter.value = data.keywords || '';
+            minBudget.value = data.minBudgetFilter || '';
+            tgBotTokenInput.value = data.tgBotToken || '';
+            tgChatIdInput.value = data.tgChatId || '';
+        });
+    }
+
+    checkIntervalInput.addEventListener('input', () => {
+        intervalValueSpan.textContent = `${checkIntervalInput.value} dk`;
+    });
+
+    // Save settings
+    saveSettingsBtn.addEventListener('click', () => {
+        const settings = {
+            checkInterval: parseInt(checkIntervalInput.value),
+            soundEnabled: soundToggle.checked,
+            keywords: keywordFilter.value.trim(),
+            minBudgetFilter: parseInt(minBudget.value) || 0,
+            tgBotToken: tgBotTokenInput.value.trim(),
+            tgChatId: tgChatIdInput.value.trim()
+        };
+        chrome.storage.local.set(settings, () => {
+            chrome.runtime.sendMessage({ type: 'SETTINGS_UPDATED', payload: settings });
+            showToast('Ayarlar kaydedildi');
+            settingsPanel.classList.remove('open');
+        });
+    });
+
+    // Clear all data
+    clearAllDataBtn.addEventListener('click', () => {
+        if (confirm('Tum veriler silinecek. Emin misin?')) {
+            chrome.storage.local.set({
+                lastKnownRequestId: null,
+                notifiedRequests: [],
+                ignoredRequests: [],
+                archivedRequests: [],
+                allRequestsData: {},
+                isInitialRunComplete: false,
+                seenRequestIds: []
+            }, () => {
+                showToast('Tum veriler temizlendi');
+                loadAndDisplayLists();
+            });
+        }
+    });
+
+    // Check now
+    checkNowBtn.addEventListener('click', () => {
+        chrome.runtime.sendMessage({ type: 'CHECK_NOW' });
+        showToast('Kontrol baslatildi...');
+    });
+
+    // Search
+    searchInput.addEventListener('input', () => {
+        loadAndDisplayLists();
+    });
+
+    // Load last check time
+    chrome.storage.local.get(['lastCheckTime'], (data) => {
+        if (data.lastCheckTime) {
+            $('#lastCheckTime').textContent = formatTime(data.lastCheckTime);
+        }
+    });
+
     loadAndDisplayLists();
 
     function loadAndDisplayLists() {
-        chrome.storage.local.get(["notifiedRequests", "archivedRequests", "ignoredRequests", "allRequestsData"], (data) => {
+        chrome.storage.local.get(['notifiedRequests', 'archivedRequests', 'ignoredRequests', 'allRequestsData'], (data) => {
             const notified = data.notifiedRequests || [];
             const archived = data.archivedRequests || [];
             const ignored = data.ignoredRequests || [];
-            const allRequestsData = data.allRequestsData || {}; // { requestId: {title: '...', url: '...'} }
+            const allData = data.allRequestsData || {};
+            const searchTerm = searchInput.value.toLowerCase().trim();
 
-            renderList(notifiedRequestsList, notified, allRequestsData, "notified");
-            renderList(archivedRequestsList, archived, allRequestsData, "archived");
-            renderList(ignoredRequestsList, ignored, allRequestsData, "ignored");
+            // Update stats
+            $('#statNew').textContent = notified.length;
+            $('#statArchived').textContent = archived.length;
+            $('#statIgnored').textContent = ignored.length;
+            $('#statTotal').textContent = Object.keys(allData).length;
+            $('#badgeNew').textContent = notified.length;
+
+            renderList($('#notifiedRequestsList'), notified, allData, 'notified', searchTerm);
+            renderList($('#archivedRequestsList'), archived, allData, 'archived', searchTerm);
+            renderList($('#ignoredRequestsList'), ignored, allData, 'ignored', searchTerm);
         });
     }
 
-    function renderList(ulElement, requestIds, allRequestsData, listType) {
-        ulElement.innerHTML = ''; 
+    function renderList(ulElement, requestIds, allData, listType, searchTerm) {
+        ulElement.innerHTML = '';
+
         if (requestIds.length === 0) {
-            ulElement.innerHTML = "<li>Liste boş.</li>";
+            ulElement.innerHTML = renderEmptyState(listType);
             return;
         }
 
-        // Son 10 bildirimi göster (veya hepsi, isteğe bağlı)
-        const displayIds = (listType === "notified") ? requestIds.slice(-10).reverse() : requestIds.reverse();
+        const displayIds = listType === 'notified'
+            ? requestIds.slice(-15).reverse()
+            : requestIds.slice().reverse();
 
-        displayIds.forEach(id => {
-            const requestInfo = allRequestsData[id] || { title: id, bodyText: "Detay yok", detailUrl: null }; // ID'yi başlık olarak kullan
-            const li = document.createElement('li');
-            
-            const titleSpan = document.createElement('span');
-            titleSpan.textContent = requestInfo.title;
-            titleSpan.style.cursor = "pointer";
-            titleSpan.addEventListener('click', () => {
-                if (requestInfo.detailUrl) {
-                    chrome.tabs.create({ url: requestInfo.detailUrl });
-                } else {
-                   
-                    chrome.tabs.create({ url: "https://www.bionluk.com/panel/alici-istekleri" });
-                }
-            });
-            li.appendChild(titleSpan);
+        let hasVisible = false;
 
-            // Butonları ekle (bildirilenler için farklı, diğerleri için farklı)
-            if (listType === "notified") {
-                const archiveButton = createButton("Arşivle", () => moveRequest(id, "notified", "archived", allRequestsData));
-                const ignoreButton = createButton("Yok Say", () => moveRequest(id, "notified", "ignored", allRequestsData));
-                li.appendChild(archiveButton);
-                li.appendChild(ignoreButton);
-            } else if (listType === "archived") {
-                const unarchiveButton = createButton("Arşivden Çıkar", () => moveRequest(id, "archived", "notified", allRequestsData)); // Geri bildirilenlere taşı
-                li.appendChild(unarchiveButton);
-            } else if (listType === "ignored") {
-                const unignoreButton = createButton("Yok Saymaktan Vazgeç", () => moveRequest(id, "ignored", "notified", allRequestsData)); // Geri bildirilenlere taşı
-                li.appendChild(unignoreButton);
+        displayIds.forEach((id, index) => {
+            const info = allData[id] || { title: id, bodyText: '', date: '', budget: '', duration: '', offers: '' };
+
+            if (searchTerm) {
+                const searchable = `${info.title} ${info.bodyText} ${info.username || ''}`.toLowerCase();
+                if (!searchable.includes(searchTerm)) return;
             }
+
+            hasVisible = true;
+            const li = document.createElement('li');
+            li.className = 'request-card';
+            li.style.animationDelay = `${index * 0.05}s`;
+
+            li.innerHTML = `
+                <div class="card-username">${escapeHtml(info.username || 'Bilinmeyen')}</div>
+                <div class="card-header">
+                    <div class="card-title">${escapeHtml(info.title || id)}</div>
+                    ${listType === 'notified' ? '<div class="new-indicator"></div>' : ''}
+                </div>
+                ${info.bodyText ? `<div class="card-body">${escapeHtml(info.bodyText)}</div>` : ''}
+                <div class="card-meta">
+                    ${info.budget ? `
+                        <div class="meta-item meta-budget">
+                            ${escapeHtml(info.budget)}
+                        </div>` : ''}
+                    ${info.duration ? `
+                        <div class="meta-item">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+                            ${escapeHtml(info.duration)}
+                        </div>` : ''}
+                    ${info.offers ? `
+                        <div class="meta-item meta-offers">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg>
+                            ${escapeHtml(info.offers)} teklif
+                        </div>` : ''}
+                    ${info.date ? `
+                        <div class="meta-item meta-date">
+                            ${escapeHtml(info.date)}
+                        </div>` : ''}
+                </div>
+                <div class="card-actions">
+                    ${getActionButtons(listType, id)}
+                </div>
+            `;
+
+            // Title click -> open bionluk
+            li.querySelector('.card-title').addEventListener('click', (e) => {
+                e.stopPropagation();
+                const url = info.detailUrl || 'https://www.bionluk.com/panel/alici-istekleri';
+                chrome.tabs.create({ url });
+            });
+            li.querySelector('.card-title').style.cursor = 'pointer';
+
+            // Action button events
+            li.querySelectorAll('.btn-action').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const action = btn.dataset.action;
+                    const targetList = btn.dataset.target;
+                    moveRequest(id, listType, targetList);
+                });
+            });
 
             ulElement.appendChild(li);
         });
+
+        if (!hasVisible && searchTerm) {
+            ulElement.innerHTML = `
+                <div class="empty-state">
+                    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+                    <p>"${escapeHtml(searchTerm)}" icin sonuc bulunamadi</p>
+                </div>
+            `;
+        }
     }
 
-    function createButton(text, onClick) {
-        const button = document.createElement('button');
-        button.textContent = text;
-        button.addEventListener('click', onClick);
-        return button;
+    function getActionButtons(listType, id) {
+        if (listType === 'notified') {
+            return `
+                <button class="btn-action btn-archive" data-action="move" data-target="archived">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 8v13H3V8M1 3h22v5H1z"/><path d="M10 12h4"/></svg>
+                    Arsivle
+                </button>
+                <button class="btn-action btn-ignore" data-action="move" data-target="ignored">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+                    Yok Say
+                </button>
+            `;
+        } else if (listType === 'archived') {
+            return `
+                <button class="btn-action btn-restore" data-action="move" data-target="notified">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 4v6h6"/><path d="M3.51 15a9 9 0 105.64-8.36L1 10"/></svg>
+                    Geri Al
+                </button>
+            `;
+        } else {
+            return `
+                <button class="btn-action btn-restore" data-action="move" data-target="notified">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 4v6h6"/><path d="M3.51 15a9 9 0 105.64-8.36L1 10"/></svg>
+                    Geri Al
+                </button>
+            `;
+        }
     }
 
-    async function moveRequest(requestId, fromListType, toListType, allRequestsData) {
-        let data = await chrome.storage.local.get(["notifiedRequests", "archivedRequests", "ignoredRequests", "lastKnownRequestId"]);
-        
-        let fromList = data[fromListType + "Requests"] || [];
-        let toList = data[toListType + "Requests"] || [];
+    function renderEmptyState(listType) {
+        const messages = {
+            notified: 'Henuz yeni istek yok',
+            archived: 'Arsivde istek yok',
+            ignored: 'Yok sayilan istek yok'
+        };
+        return `
+            <div class="empty-state">
+                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v16"/></svg>
+                <p>${messages[listType]}</p>
+            </div>
+        `;
+    }
 
-        // İsteği kaynak listeden kaldır
-        fromList = fromList.filter(id => id !== requestId);
-        // İsteği hedef listeye ekle (eğer zaten yoksa)
-        if (!toList.includes(requestId)) {
-            toList.push(requestId);
+    async function moveRequest(requestId, fromList, toList) {
+        const data = await chrome.storage.local.get(['notifiedRequests', 'archivedRequests', 'ignoredRequests']);
+
+        let from = data[fromList + 'Requests'] || [];
+        let to = data[toList + 'Requests'] || [];
+
+        from = from.filter(id => id !== requestId);
+        if (!to.includes(requestId)) {
+            to.push(requestId);
         }
 
         const updateData = {};
-        updateData[fromListType + "Requests"] = fromList;
-        updateData[toListType + "Requests"] = toList;
-
-        if ((toListType === 'ignored' || toListType === 'archived') && data.lastKnownRequestId === requestId) {
-             updateData.lastKnownRequestId = null;
-        }
+        updateData[fromList + 'Requests'] = from;
+        updateData[toList + 'Requests'] = to;
 
         await chrome.storage.local.set(updateData);
-        loadAndDisplayLists(); // Listeleri yeniden yükle
+        updateBadgeCount(updateData.notifiedRequests || from);
+        loadAndDisplayLists();
+
+        const actionNames = { archived: 'Arsivlendi', ignored: 'Yok sayildi', notified: 'Geri alindi' };
+        showToast(actionNames[toList] || 'Tasinan');
     }
 
-}); 
+    function updateBadgeCount(notifiedList) {
+        chrome.runtime.sendMessage({ type: 'UPDATE_BADGE', payload: { count: notifiedList.length } });
+    }
+
+    function showToast(message) {
+        let toast = document.querySelector('.toast');
+        if (!toast) {
+            toast = document.createElement('div');
+            toast.className = 'toast';
+            document.body.appendChild(toast);
+        }
+        toast.textContent = message;
+        toast.classList.add('show');
+        setTimeout(() => toast.classList.remove('show'), 2000);
+    }
+
+    function formatTime(timestamp) {
+        const d = new Date(timestamp);
+        return d.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
+    }
+
+    function escapeHtml(str) {
+        if (!str) return '';
+        const div = document.createElement('div');
+        div.textContent = str;
+        return div.innerHTML;
+    }
+});
