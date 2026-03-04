@@ -315,43 +315,39 @@ async function processNewRequests(newRequests, tabId) {
         return;
     }
 
-    // Gercekten yeni olan istekleri bul: daha once hic gorulmemis olanlar
+    // Sayfadaki tum istekleri "goruldu" olarak isaretle (sonraki kontrolde sapıtmasın)
+    for (const req of newRequests) {
+        if (req.id) seenSet.add(req.id);
+    }
+
+    // Sadece listenin en basindaki (gercekten yeni gelen) istek bildirilsin
+    const topRequest = newRequests[0];
+    const topIdWasNew = topRequest?.id && !(data.seenRequestIds || []).includes(topRequest.id);
     let newCount = 0;
 
-    for (const req of newRequests) {
-        if (!req.id) continue;
-        if (seenSet.has(req.id)) continue; // Daha once gorulmus, atla
+    if (topIdWasNew && matchesFilters(topRequest, keywords, minBudget)) {
+        notified.push(topRequest.id);
+        newCount = 1;
 
-        // Yeni istek! Once goruldu olarak isaretle
-        seenSet.add(req.id);
-
-        // Filtre kontrolu
-        if (!matchesFilters(req, keywords, minBudget)) {
-            console.log(`Filtre eslesmedi, atlaniyor: ${req.title}`);
-            continue;
-        }
-
-        notified.push(req.id);
-        newCount++;
-
-        chrome.notifications.create("bionlukReq_" + req.id, {
+        chrome.notifications.create("bionlukReq_" + topRequest.id, {
             type: "basic",
             iconUrl: chrome.runtime.getURL("images/icon128.png"),
             title: "Yeni Bionluk Istegi!",
-            message: req.title || "Yeni bir alici istegi var",
+            message: topRequest.title || "Yeni bir alici istegi var",
             priority: 2,
         });
 
         if (tgToken && tgChatId) {
-            // Telegram bildirimi (fire-and-forget)
-            sendTelegramNotification(req, tgToken, tgChatId).catch(() => {});
+            sendTelegramNotification(topRequest, tgToken, tgChatId).catch((err) => {
+                console.error("Telegram gonderim hatasi:", err);
+            });
         }
 
-        if (req.hasReadMore) {
+        if (topRequest.hasReadMore) {
             try {
                 chrome.tabs.sendMessage(tabId, {
                     type: "GET_FULL_TEXT",
-                    payload: { requestId: req.id }
+                    payload: { requestId: topRequest.id }
                 });
             } catch (e) { /* tab kapanmis olabilir */ }
         }

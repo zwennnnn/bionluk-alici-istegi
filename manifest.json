@@ -13,7 +13,8 @@
     "offscreen"
   ],
   "host_permissions": [
-    "*://*.bionluk.com/*"
+    "*://*.bionluk.com/*",
+    "https://api.telegram.org/*"
   ],
   "background": {
     "service_worker": "background.js"
