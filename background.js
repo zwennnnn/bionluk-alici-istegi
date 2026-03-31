@@ -1,11 +1,13 @@
-console.log("Bionluk Bildirici: background script v2 yuklendi.");
+console.log("Bionluk Bildirici: background script v3 yuklendi.");
 
 const DEFAULT_CHECK_INTERVAL = 1;
 const BIONLUK_URL = "https://www.bionluk.com/panel/alici-istekleri";
+const BIONLUK_WALLET_URL = "https://www.bionluk.com/panel/cuzdan";
 const OFFSCREEN_DOCUMENT_PATH = 'offscreen.html';
 const READY_TIMEOUT_MS = 20000;
 
 let pendingReadyTabs = new Set();
+let pendingWalletTabs = new Set();
 
 // ---- OFFSCREEN (ses icin) ----
 async function hasOffscreenDocument(path) {
@@ -59,11 +61,17 @@ chrome.runtime.onInstalled.addListener(async () => {
         periodInMinutes: interval
     });
 
+    // Cuzdan kontrolu icin ayri alarm - 1 dk aralikla
+    chrome.alarms.create("walletCheck", {
+        delayInMinutes: 0.3,
+        periodInMinutes: 1
+    });
+
     const existing = await chrome.storage.local.get([
         'lastKnownRequestId', 'notifiedRequests', 'ignoredRequests',
         'archivedRequests', 'allRequestsData', 'isInitialRunComplete',
         'soundEnabled', 'keywords', 'minBudgetFilter', 'seenRequestIds',
-        'tgBotToken', 'tgChatId'
+        'tgBotToken', 'tgChatId', 'walletBalance', 'walletLastCheck'
     ]);
 
     await chrome.storage.local.set({
@@ -80,7 +88,9 @@ chrome.runtime.onInstalled.addListener(async () => {
         checkInterval: existing.checkInterval || DEFAULT_CHECK_INTERVAL,
         seenRequestIds: existing.seenRequestIds || [],
         tgBotToken: existing.tgBotToken || '',
-        tgChatId: existing.tgChatId || ''
+        tgChatId: existing.tgChatId || '',
+        walletBalance: existing.walletBalance || '0,00',
+        walletLastCheck: existing.walletLastCheck || null
     });
 
     refreshBadge();
@@ -92,6 +102,12 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
         if (isExtensionActive) {
             console.log("Alarm tetiklendi, kontrol ediliyor...");
             await checkBionlukPage();
+        }
+    } else if (alarm.name === "walletCheck") {
+        const { isExtensionActive } = await chrome.storage.local.get("isExtensionActive");
+        if (isExtensionActive) {
+            console.log("Cuzdan alarm tetiklendi, bakiye kontrol ediliyor...");
+            await checkWalletPage();
         }
     }
 });
@@ -165,12 +181,23 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     } else if (request.type === 'CHECK_NOW') {
         checkBionlukPage();
         sendResponse({ status: "ok" });
+    } else if (request.type === 'CHECK_WALLET_NOW') {
+        checkWalletPage();
+        sendResponse({ status: "ok" });
     } else if (request.type === 'UPDATE_BADGE') {
         updateBadge(request.payload.count);
         sendResponse({ status: "ok" });
     } else if (request.type === 'SETTINGS_UPDATED') {
         handleSettingsUpdate(request.payload);
         sendResponse({ status: "ok" });
+    } else if (request.type === 'WALLET_BALANCE_DATA' && sender.tab?.id) {
+        handleWalletBalanceData(request.payload, sender.tab.id);
+        sendResponse({ status: "ok" });
+    } else if (request.type === 'GET_WALLET_STATUS') {
+        chrome.storage.local.get(['walletBalance', 'walletLastCheck'], (data) => {
+            sendResponse({ balance: data.walletBalance || '0,00', lastCheck: data.walletLastCheck || null });
+        });
+        return true; // async response
     }
     return true;
 });
@@ -381,6 +408,103 @@ chrome.notifications.onClicked.addListener((notificationId) => {
     }
     chrome.notifications.clear(notificationId);
 });
+
+// ---- CUZDAN / WALLET KONTROL ----
+async function checkWalletPage() {
+    let walletTab = null;
+    try {
+        const tabs = await chrome.tabs.query({ url: "*://*.bionluk.com/panel/cuzdan*" });
+
+        if (tabs.length > 0) {
+            walletTab = tabs[0];
+            try {
+                await chrome.tabs.reload(walletTab.id);
+            } catch (err) {
+                if (err.message.includes("No tab with id") || err.message.includes("Invalid tab ID")) {
+                    walletTab = await chrome.tabs.create({ url: BIONLUK_WALLET_URL, active: false });
+                } else {
+                    console.warn("Cuzdan sekme yenileme hatasi:", err.message);
+                    return;
+                }
+            }
+        } else {
+            walletTab = await chrome.tabs.create({ url: BIONLUK_WALLET_URL, active: false });
+        }
+
+        if (!walletTab?.id) return;
+
+        pendingWalletTabs.add(walletTab.id);
+        await chrome.storage.local.set({ walletLastCheck: Date.now() });
+
+        setTimeout(() => {
+            if (pendingWalletTabs.has(walletTab.id)) {
+                console.warn(`Wallet Timeout: Sekme ${walletTab.id} yanit vermedi.`);
+                pendingWalletTabs.delete(walletTab.id);
+            }
+        }, READY_TIMEOUT_MS);
+
+    } catch (e) {
+        console.error("checkWalletPage hatasi:", e);
+    }
+}
+
+async function handleWalletBalanceData(payload, tabId) {
+    pendingWalletTabs.delete(tabId);
+
+    if (!payload || payload.balance === null || payload.balance === undefined) return;
+
+    const newBalance = payload.balance;
+    const data = await chrome.storage.local.get(['walletBalance', 'tgBotToken', 'tgChatId']);
+    const oldBalance = data.walletBalance || '0,00';
+
+    console.log(`Cuzdan bakiye: eski=${oldBalance}, yeni=${newBalance}`);
+
+    // Bakiye degismis mi kontrol et
+    const oldNum = parseFloat(oldBalance.replace(',', '.'));
+    const newNum = parseFloat(newBalance.replace(',', '.'));
+
+    if (!isNaN(newNum) && !isNaN(oldNum) && newNum > oldNum) {
+        // Bakiye artti - bildirim gonder!
+        const diff = (newNum - oldNum).toFixed(2).replace('.', ',');
+
+        chrome.notifications.create("walletBalanceUp_" + Date.now(), {
+            type: "basic",
+            iconUrl: chrome.runtime.getURL("images/icon128.png"),
+            title: "💰 Bakiye Yuklendi!",
+            message: `Hesabina ${diff} TL yuklendi! Yeni bakiye: ${newBalance} TL`,
+            priority: 2,
+        });
+
+        await playSoundViaOffscreen("sound/notification.mp3");
+
+        // Telegram bildirimi
+        const tgToken = data.tgBotToken || '';
+        const tgChatId = data.tgChatId || '';
+        if (tgToken && tgChatId) {
+            try {
+                const body = {
+                    chat_id: tgChatId,
+                    text: `💰 Bakiye Yuklendi!\nEski: ${oldBalance} TL\nYeni: ${newBalance} TL\nFark: +${diff} TL`
+                };
+                await fetch(`https://api.telegram.org/bot${tgToken}/sendMessage`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body)
+                });
+            } catch (e) {
+                console.error('Telegram cuzdan bildirimi gonderilemedi:', e);
+            }
+        }
+
+        console.log(`Bakiye artti: ${oldBalance} -> ${newBalance} (+${diff} TL)`);
+    }
+
+    // Bakiyeyi guncelle
+    await chrome.storage.local.set({
+        walletBalance: newBalance,
+        walletLastCheck: Date.now()
+    });
+}
 
 // Baslangicta badge'i guncelle
 refreshBadge();

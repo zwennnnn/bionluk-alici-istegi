@@ -27,7 +27,21 @@
         "*://www.bionluk.com/panel/alici-istekleri/",
         "*://bionluk.com/panel/alici-istekleri/"
       ],
-      "js": ["content.js"],
+      "js": [
+        "content.js"
+      ],
+      "run_at": "document_end"
+    },
+    {
+      "matches": [
+        "*://www.bionluk.com/panel/cuzdan",
+        "*://bionluk.com/panel/cuzdan",
+        "*://www.bionluk.com/panel/cuzdan/",
+        "*://bionluk.com/panel/cuzdan/"
+      ],
+      "js": [
+        "content-wallet.js"
+      ],
       "run_at": "document_end"
     }
   ],
@@ -53,7 +67,9 @@
         "images/icon48.png",
         "images/icon128.png"
       ],
-      "matches": ["<all_urls>"]
+      "matches": [
+        "<all_urls>"
+      ]
     }
   ]
 }

@@ -17,6 +17,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const minBudget = $('#minBudget');
     const tgBotTokenInput = $('#tgBotToken');
     const tgChatIdInput = $('#tgChatId');
+    const walletBalanceEl = $('#walletBalance');
+    const walletLastCheckEl = $('#walletLastCheck');
+    const walletRefreshBtn = $('#walletRefreshBtn');
+    const walletCard = $('#walletCard');
 
     // Tab switching
     $$('.tab').forEach(tab => {
@@ -92,7 +96,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 archivedRequests: [],
                 allRequestsData: {},
                 isInitialRunComplete: false,
-                seenRequestIds: []
+                seenRequestIds: [],
+                walletBalance: '0,00',
+                walletLastCheck: null
             }, () => {
                 showToast('Tum veriler temizlendi');
                 loadAndDisplayLists();
@@ -119,6 +125,58 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     loadAndDisplayLists();
+    loadWalletBalance();
+
+    // Her 60 saniyede bakiye guncelle
+    setInterval(loadWalletBalance, 60000);
+
+    // Wallet refresh butonu
+    walletRefreshBtn.addEventListener('click', () => {
+        walletRefreshBtn.classList.add('spinning');
+        chrome.runtime.sendMessage({ type: 'CHECK_WALLET_NOW' });
+        showToast('Bakiye kontrol ediliyor...');
+        // 5 saniye sonra spinning kaldir + balance guncelle
+        setTimeout(() => {
+            walletRefreshBtn.classList.remove('spinning');
+            loadWalletBalance();
+        }, 5000);
+    });
+
+    function loadWalletBalance() {
+        chrome.runtime.sendMessage({ type: 'GET_WALLET_STATUS' }, (response) => {
+            if (chrome.runtime.lastError) {
+                console.warn('Wallet status alinamadi:', chrome.runtime.lastError);
+                return;
+            }
+            if (response) {
+                const balance = response.balance || '0,00';
+                const lastCheck = response.lastCheck;
+
+                // Bakiye degisti mi kontrol et
+                const prevBalance = walletBalanceEl.textContent;
+                walletBalanceEl.textContent = balance;
+
+                // Bakiye artarsa animasyon goster
+                const prevNum = parseFloat(prevBalance.replace(',', '.'));
+                const newNum = parseFloat(balance.replace(',', '.'));
+                if (!isNaN(prevNum) && !isNaN(newNum) && newNum > prevNum) {
+                    walletCard.classList.add('wallet-glow');
+                    setTimeout(() => walletCard.classList.remove('wallet-glow'), 3000);
+                }
+
+                // Sifirdan buyukse yesil, degilse normal
+                if (newNum > 0) {
+                    walletBalanceEl.classList.add('has-balance');
+                } else {
+                    walletBalanceEl.classList.remove('has-balance');
+                }
+
+                if (lastCheck) {
+                    walletLastCheckEl.textContent = formatTime(lastCheck);
+                }
+            }
+        });
+    }
 
     function loadAndDisplayLists() {
         chrome.storage.local.get(['notifiedRequests', 'archivedRequests', 'ignoredRequests', 'allRequestsData'], (data) => {
